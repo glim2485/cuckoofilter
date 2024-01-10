@@ -10,9 +10,9 @@ const maxCuckooCount = 500
 
 // Filter is a probabilistic counter
 type Filter struct {
-	buckets   []bucket
-	count     uint
-	bucketPow uint
+	Buckets   []bucket
+	Count     uint
+	BucketPow uint
 }
 
 // NewFilter returns a new cuckoofilter with a given capacity.
@@ -25,28 +25,38 @@ func NewFilter(capacity uint) *Filter {
 	}
 	buckets := make([]bucket, capacity)
 	return &Filter{
-		buckets:   buckets,
-		count:     0,
-		bucketPow: uint(bits.TrailingZeros(capacity)),
+		Buckets:   buckets,
+		Count:     0,
+		BucketPow: uint(bits.TrailingZeros(capacity)),
+	}
+}
+
+func CopyFilter(buckets []bucket, count uint, bucketPow uint) *Filter {
+	newBucket := make([]bucket, len(buckets))
+	copy(newBucket, buckets)
+	return &Filter{
+		Buckets : newBucket,
+		Count: count,
+		BucketPow: bucketPow,
 	}
 }
 
 // Lookup returns true if data is in the counter
 func (cf *Filter) Lookup(data []byte) bool {
-	i1, fp := getIndexAndFingerprint(data, cf.bucketPow)
-	if cf.buckets[i1].getFingerprintIndex(fp) > -1 {
+	i1, fp := getIndexAndFingerprint(data, cf.BucketPow)
+	if cf.Buckets[i1].getFingerprintIndex(fp) > -1 {
 		return true
 	}
-	i2 := getAltIndex(fp, i1, cf.bucketPow)
-	return cf.buckets[i2].getFingerprintIndex(fp) > -1
+	i2 := getAltIndex(fp, i1, cf.BucketPow)
+	return cf.Buckets[i2].getFingerprintIndex(fp) > -1
 }
 
 // Reset ...
 func (cf *Filter) Reset() {
-	for i := range cf.buckets {
-		cf.buckets[i].reset()
+	for i := range cf.Buckets {
+		cf.Buckets[i].reset()
 	}
-	cf.count = 0
+	cf.Count = 0
 }
 
 func randi(i1, i2 uint) uint {
@@ -58,11 +68,11 @@ func randi(i1, i2 uint) uint {
 
 // Insert inserts data into the counter and returns true upon success
 func (cf *Filter) Insert(data []byte) bool {
-	i1, fp := getIndexAndFingerprint(data, cf.bucketPow)
+	i1, fp := getIndexAndFingerprint(data, cf.BucketPow)
 	if cf.insert(fp, i1) {
 		return true
 	}
-	i2 := getAltIndex(fp, i1, cf.bucketPow)
+	i2 := getAltIndex(fp, i1, cf.BucketPow)
 	if cf.insert(fp, i2) {
 		return true
 	}
@@ -78,8 +88,8 @@ func (cf *Filter) InsertUnique(data []byte) bool {
 }
 
 func (cf *Filter) insert(fp fingerprint, i uint) bool {
-	if cf.buckets[i].insert(fp) {
-		cf.count++
+	if cf.Buckets[i].insert(fp) {
+		cf.Count++
 		return true
 	}
 	return false
@@ -89,11 +99,11 @@ func (cf *Filter) reinsert(fp fingerprint, i uint) bool {
 	for k := 0; k < maxCuckooCount; k++ {
 		j := rand.Intn(bucketSize)
 		oldfp := fp
-		fp = cf.buckets[i][j]
-		cf.buckets[i][j] = oldfp
+		fp = cf.Buckets[i][j]
+		cf.Buckets[i][j] = oldfp
 
 		// look in the alternate location for that random element
-		i = getAltIndex(fp, i, cf.bucketPow)
+		i = getAltIndex(fp, i, cf.BucketPow)
 		if cf.insert(fp, i) {
 			return true
 		}
@@ -103,18 +113,18 @@ func (cf *Filter) reinsert(fp fingerprint, i uint) bool {
 
 // Delete data from counter if exists and return if deleted or not
 func (cf *Filter) Delete(data []byte) bool {
-	i1, fp := getIndexAndFingerprint(data, cf.bucketPow)
+	i1, fp := getIndexAndFingerprint(data, cf.BucketPow)
 	if cf.delete(fp, i1) {
 		return true
 	}
-	i2 := getAltIndex(fp, i1, cf.bucketPow)
+	i2 := getAltIndex(fp, i1, cf.BucketPow)
 	return cf.delete(fp, i2)
 }
 
 func (cf *Filter) delete(fp fingerprint, i uint) bool {
-	if cf.buckets[i].delete(fp) {
-		if cf.count > 0 {
-			cf.count--
+	if cf.Buckets[i].delete(fp) {
+		if cf.Count > 0 {
+			cf.Count--
 		}
 		return true
 	}
@@ -122,14 +132,14 @@ func (cf *Filter) delete(fp fingerprint, i uint) bool {
 }
 
 // Count returns the number of items in the counter
-func (cf *Filter) Count() uint {
-	return cf.count
+func (cf *Filter) CountEntries() uint {
+	return cf.Count
 }
 
 // Encode returns a byte slice representing a Cuckoofilter
 func (cf *Filter) Encode() []byte {
-	bytes := make([]byte, len(cf.buckets)*bucketSize)
-	for i, b := range cf.buckets {
+	bytes := make([]byte, len(cf.Buckets)*bucketSize)
+	for i, b := range cf.Buckets {
 		for j, f := range b {
 			index := (i * len(b)) + j
 			bytes[index] = byte(f)
@@ -158,8 +168,8 @@ func Decode(bytes []byte) (*Filter, error) {
 		}
 	}
 	return &Filter{
-		buckets:   buckets,
-		count:     count,
-		bucketPow: uint(bits.TrailingZeros(uint(len(buckets)))),
+		Buckets:   buckets,
+		Count:     count,
+		BucketPow: uint(bits.TrailingZeros(uint(len(buckets)))),
 	}, nil
 }
